@@ -3,9 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, Column, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import declarative_base, sessionmaker
-import os
-import hmac
-import hashlib
 import json
 from urllib.parse import parse_qsl
 
@@ -40,7 +37,6 @@ class Subject(Base):
 # Pydantic models
 # =========================
 class SubjectIn(BaseModel):
-    # Для старого API (бота/локалки), где user_id приходит явно
     user_id: int
     name: str = Field(min_length=1, max_length=100)
     missed: int = Field(ge=0)
@@ -48,7 +44,6 @@ class SubjectIn(BaseModel):
 
 
 class SubjectInTG(BaseModel):
-    # Для Mini App (tg.initData), user_id НЕ присылаем
     name: str = Field(min_length=1, max_length=100)
     missed: int = Field(ge=0)
     total: int = Field(ge=1)
@@ -61,7 +56,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # для разработки можно *
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -74,47 +69,27 @@ def on_startup():
 
 
 # =========================
-# Telegram initData verify
+# 🔥 УПРОЩЕННАЯ авторизация (без проверки подписи)
 # =========================
-def verify_telegram_init_data(init_data: str, bot_token: str) -> dict:
-    if not bot_token:
-        raise HTTPException(status_code=500, detail="BOT_TOKEN is not set on server")
+def get_user_id_from_init_data(init_data: str) -> int:
     if not init_data:
-        raise HTTPException(status_code=401, detail="Missing initData")
+        raise HTTPException(status_code=400, detail="initData is empty")
 
     pairs = dict(parse_qsl(init_data, keep_blank_values=True))
-    received_hash = pairs.pop("hash", None)
-    if not received_hash:
-        raise HTTPException(status_code=401, detail="Missing hash in initData")
 
-    data_check_string = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs.keys()))
-    secret_key = hashlib.sha256(bot_token.encode()).digest()
-    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if "user" not in pairs:
+        raise HTTPException(status_code=400, detail="User not found in initData")
 
-    if not hmac.compare_digest(computed_hash, received_hash):
-        raise HTTPException(status_code=401, detail="Invalid initData")
+    try:
+        user = json.loads(pairs["user"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user JSON")
 
-    # user приходит JSON-строкой
-    if "user" in pairs:
-        try:
-            pairs["user"] = json.loads(pairs["user"])
-        except Exception:
-            raise HTTPException(status_code=401, detail="Invalid user JSON in initData")
-
-    return pairs
-
-
-def get_user_id_from_init_data(init_data: str) -> int:
-    bot_token = os.environ.get("BOT_TOKEN")
-    data = verify_telegram_init_data(init_data, bot_token)
-    user = data.get("user")
-    if not user or "id" not in user:
-        raise HTTPException(status_code=401, detail="User not found in initData")
     return int(user["id"])
 
 
 # =========================
-# OLD API (works with explicit user_id)
+# OLD API (с user_id)
 # =========================
 @app.post("/add")
 def add_subject(payload: SubjectIn):
@@ -199,7 +174,7 @@ def delete_subject(user_id: int, name: str = Query(..., min_length=1)):
 
 
 # =========================
-# TG API (Mini App) - secure via initData
+# TG API (Mini App, без подписи)
 # =========================
 @app.get("/tg/stats")
 def tg_stats(x_telegram_init_data: str = Header(default="")):
