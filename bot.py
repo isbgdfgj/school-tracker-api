@@ -10,8 +10,21 @@ BOT_TOKEN = "8347460912:AAFBQ5C7x94NtkMWceDKGTaQFvsuueLC6vA"
 SERVER_URL = "http://127.0.0.1:8000"
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я бот-трекер успеваемости 📚")
+from telegram import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+
+def start(update, context):
+    web_app = WebAppInfo(url="https://school-tracker-frontend.vercel.app")
+
+    keyboard = [
+        [KeyboardButton(text="📊 Открыть трекер", web_app=web_app)]
+    ]
+
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+    update.message.reply_text(
+        "Открой мини-приложение:",
+        reply_markup=reply_markup
+    )
 
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -61,7 +74,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
- 
+
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args
