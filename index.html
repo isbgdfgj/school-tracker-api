@@ -1,0 +1,178 @@
+ <!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>School Tracker</title>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f6f7fb;
+      padding: 12px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 18px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 12px;
+      margin-top: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 6px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 15px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 10px;
+      background: #2AABEE;
+      color: white;
+      font-size: 15px;
+      font-weight: bold;
+    }
+
+    .subject {
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      margin-top: 8px;
+      background: #fafafa;
+    }
+
+    .muted {
+      color: #666;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>📚 School Tracker</h1>
+
+<div id="user"></div>
+
+<div class="card">
+  <button onclick="loadStats()">🔄 Обновить статистику</button>
+  <div id="stats" class="muted" style="margin-top:10px;">Нет данных</div>
+</div>
+
+<div class="card">
+  <h3>➕ Добавить / обновить предмет</h3>
+
+  <input id="name" placeholder="Предмет">
+  <input id="missed" type="number" placeholder="Пропуски">
+  <input id="total" type="number" placeholder="Всего занятий">
+
+  <button onclick="addSubject()">💾 Сохранить</button>
+
+  <div id="result" class="muted" style="margin-top:10px;"></div>
+</div>
+
+<script>
+  const tg = window.Telegram.WebApp;
+  tg.expand();
+
+  const BACKEND_URL = "https://school-tracker-api-hxjl.onrender.com";
+
+  const user = tg.initDataUnsafe?.user;
+
+  if (user) {
+    document.getElementById("user").innerHTML =
+      `<p>👤 ${user.first_name} (ID: ${user.id})</p>`;
+  } else {
+    alert("Открой Mini App из Telegram");
+  }
+
+  async function loadStats() {
+    const r = await fetch(`${BACKEND_URL}/stats/${user.id}`);
+
+    if (!r.ok) {
+      const err = await r.text();
+      alert(`Ошибка stats: ${r.status}\n${err}`);
+      return;
+    }
+
+    const data = await r.json();
+    const subjects = data.subjects || [];
+
+    if (!subjects.length) {
+      document.getElementById("stats").innerHTML = "Нет предметов";
+      return;
+    }
+
+    let html = "";
+
+    subjects.forEach(s => {
+      const percent = (s.missed / s.total * 100).toFixed(1);
+      const canMiss = Math.floor(s.total * 0.6) - s.missed;
+
+      html += `
+        <div class="subject">
+          <b>${s.name}</b><br>
+          Пропуски: ${s.missed}/${s.total} (${percent}%)<br>
+          Можно ещё пропустить: ${canMiss}
+        </div>
+      `;
+    });
+
+    document.getElementById("stats").innerHTML = html;
+  }
+
+  async function addSubject() {
+    const name = document.getElementById("name").value.trim();
+    const missed = Number(document.getElementById("missed").value);
+    const total = Number(document.getElementById("total").value);
+
+    if (!name) return alert("Введите предмет");
+
+    const r = await fetch(`${BACKEND_URL}/add`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        user_id: user.id,
+        name,
+        missed,
+        total
+      })
+    });
+
+    if (!r.ok) {
+      const err = await r.text();
+      alert(`Ошибка add: ${r.status}\n${err}`);
+      return;
+    }
+
+    const data = await r.json();
+
+    document.getElementById("result").innerHTML =
+      `✅ Сохранено. Процент: ${data.percent}%`;
+
+    await loadStats();
+  }
+
+  loadStats();
+</script>
+
+</body>
+</html>
