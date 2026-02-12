@@ -39,6 +39,15 @@ class SubjectIn(BaseModel):
 
 
 app = FastAPI()
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # для разработки можно *
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # 🔹 Создание таблиц при старте
@@ -146,3 +155,62 @@ def delete_subject(user_id: int, name: str = Query(..., min_length=1)):
         return {"ok": True, "deleted": deleted_name}
     finally:
         db.close()
+import os, time, hmac, hashlib, json
+from urllib.parse import parse_qsl
+from fastapi import Header, HTTPException
+
+def verify_telegram_init_data(init_data: str, bot_token: str):
+    pairs = dict(parse_qsl(init_data, keep_blank_values=True))
+    received_hash = pairs.pop("hash", None)
+
+    data_check_string = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs.keys()))
+    secret_key = hashlib.sha256(bot_token.encode()).digest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
+    if computed_hash != received_hash:
+        raise HTTPException(status_code=401, detail="Invalid initData")
+
+    if "user" in pairs:
+        pairs["user"] = json.loads(pairs["user"])
+
+    return pairs
+
+def get_user_id(init_data: str):
+    bot_token = os.environ.get("BOT_TOKEN")
+    data = verify_telegram_init_data(init_data, bot_token)
+    return data["user"]["id"]
+@app.get("/tg/stats")
+def tg_stats(x_telegram_init_data: str = Header(default="")):
+    user_id = get_user_id(x_telegram_init_data)
+
+    db = SessionLocal()
+    subjects = db.query(Subject).filter(Subject.user_id == user_id).all()
+
+    return {
+        "user_id": user_id,
+        "subjects": [
+            {"name": s.name, "missed": s.missed, "total": s.total}
+            for s in subjects
+        ]
+    }
+@app.post("/tg/add")
+def tg_add(data: SubjectIn, x_telegram_init_data: str = Header(default="")):
+    user_id = get_user_id(x_telegram_init_data)
+
+    db = SessionLocal()
+
+    subject = Subject(
+        user_id=user_id,
+        name=data.name,
+        missed=data.missed,
+        total=data.total
+    )
+
+    db.add(subject)
+    db.commit()
+
+    percent = round((data.missed / data.total) * 100, 1)
+
+    return {
+        "percent": percent
+    }
