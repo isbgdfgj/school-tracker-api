@@ -2,7 +2,7 @@ import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-BOT_TOKEN = "ВАШ_BOT_TOKEN"
+BOT_TOKEN = "8347460912:AAFVQET48RfNvabIuYpBcKQS-rD9q9AN5Ao"
 SERVER_URL = "http://127.0.0.1:8000"
 VERCEL_URL = "https://school-tracker-frontend.vercel.app"
 
